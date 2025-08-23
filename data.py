@@ -63,8 +63,7 @@ class UserClass:
             "type": "class User",
             "username": self.username,
             "publickey": publickey,
-            "creation": int(self.creation.timestamp()),
-            "serversalt": byte2b64(self.serversalt),
+            "creation": int(self.creation.timestamp())
         }
         return data
 

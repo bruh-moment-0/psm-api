@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from dateutil.relativedelta import relativedelta
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from typing import Optional
 from data import *
 import jwt
 import time
@@ -33,7 +34,7 @@ def now():
 class Message(BaseModel):
     messageid: str
     sender: str
-    sender_verify: str
+    sendertoken: str
     reciever: str
     sender_pk: str
     reciever_pk: str
@@ -66,6 +67,13 @@ def error(msg: str, code: int = 400):
 
 def cleanup_challenges(challenges: dict) -> dict:
     return {cid: info for cid, info in challenges.items() if info["exp"] >= now()} # drop expired
+
+def verify_token(token: str) -> Optional[dict]:
+    try:
+        payload = jwt.decode(token, ACCESS_KEY, algorithms=["HS256"]) # pyright: ignore[reportArgumentType]
+        return payload
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
 
 # === Endpoints ===
 @app.get("/", response_class=HTMLResponse)
@@ -143,67 +151,43 @@ def login_finish(x: LoginFinishIn):
     tok = signAccess(x.username)
     return {"access_token": tok, "token_type": "bearer"}
 
-@app.get("/protected")
+@app.get("/auth/protected")
 def protected(req: Request):
     auth = req.headers.get("Authorization")
     if not auth or not auth.lower().startswith("bearer "):
         error("missing_token", 401)
     token = auth.split(" ", 1)[1] # pyright: ignore[reportOptionalMemberAccess]
-    try:
-        payload = jwt.decode(token, ACCESS_KEY, algorithms=["HS256"]) # pyright: ignore[reportArgumentType]
-    except jwt.ExpiredSignatureError:
-        error("token_expired", 401)
-    except jwt.InvalidTokenError:
-        error("token_invalid", 401)
-    return {"ok": True, "user": payload["sub"], "exp": payload["exp"]} # pyright: ignore[reportPossiblyUnboundVariable]
+    payload = verify_token(token)
+    if not payload:
+        error("token_invalid_or_expired", 401)
+    return {"ok": True, "user": payload["sub"], "exp": payload["exp"]} # pyright: ignore[reportOptionalSubscript]
+    # exp payload is important for client-side to remind the client to auto request new tokens
 
-
-
-
-
-
-
-
-# bellow is AI generated code to be further refined.
-
-# API endpoint to send a message
-@app.post("/api/send")
+@app.post("/api/message/send")
 def sendMessage(msg: Message):
     try:
-        # 1. Verify sender exists and password hash matches
-        sender_filepath = os.path.join(USERDIR, f"{msg.sender}-V1.json")
-        if not os.path.exists(sender_filepath):
-            raise HTTPException(status_code=404, detail="Sender not found")
-        
-        sender_data = readjson(sender_filepath)
-        
-        # Check if sender_verify matches the stored password hash
-        if sender_data.get("clienthashed") != msg.sender_verify:
-            raise HTTPException(status_code=401, detail="Invalid sender verification")
-        
-        # 2. Store message in JSON file
-        message_filepath = os.path.join(MESSAGEDIR, f"{msg.messageid}.json")
-        
-        message_data = {
+        senderfp = os.path.join(USERDIR, f"{msg.sender}-V1.json")
+        if not os.path.exists(senderfp):
+            error("sender_not_found", 404)
+        payload = verify_token(msg.sendertoken)
+        messagefp = os.path.join(MESSAGEDIR, f"{msg.messageid}-msg-V1.json")
+        messagedata = {
             "messageid": msg.messageid,
             "sender": msg.sender,
-            "sender_verify": msg.sender_verify,
+            "tokenexp": payload["exp"],  # pyright: ignore[reportOptionalSubscript]
             "reciever": msg.reciever,
             "sender_pk": msg.sender_pk,
             "reciever_pk": msg.reciever_pk,
             "shared_secret": msg.shared_secret,
             "payload": msg.payload,
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            "timestamp": datetime.datetime.now(datetime.timezone.utc)
         }
-        
-        writejson(message_filepath, message_data)
-        
-        return {"status": "success", "message": "Message sent and stored!", "messageid": msg.messageid}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+        writejson(messagefp, messagedata)
+        return {"ok": True, "tokenexp": payload["exp"], "messageid": msg.messageid} # pyright: ignore[reportOptionalSubscript]
+    except Exception:
+        error("failed_to_send_message", 500)
+
+# bellow is AI generated code to be further refined.
 
 # API endpoint to get messages for a user (inbox)
 @app.get("/api/messages/inbox/{username}")
