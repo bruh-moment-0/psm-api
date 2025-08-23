@@ -201,19 +201,22 @@ def sendMessage(msg: MessageSendModel):
         if not os.path.exists(senderfp):
             error("sender_not_found", 404)
         payload = verify_token(msg.sendertoken)
-        if not payload:
+        if not payload or payload["sub"] != msg.sender:
             error("token_invalid_or_expired", 401)
+        receiverfp = os.path.join(USERDIR, f"{msg.reciever}-V1.json")
+        if not os.path.exists(receiverfp):
+            error("receiver_not_found", 404)
         messagefp = os.path.join(MESSAGEDIR, f"{msg.messageid}-msg-V1.json")
         messagedata = {
             "messageid": msg.messageid,
             "sender": msg.sender,
-            "tokenexp": payload["exp"],  # pyright: ignore[reportOptionalSubscript]
             "reciever": msg.reciever,
+            "tokenexp": payload["exp"], # pyright: ignore[reportOptionalSubscript]
             "sender_pk": msg.sender_pk,
             "reciever_pk": msg.reciever_pk,
             "shared_secret": msg.shared_secret,
             "payload": msg.payload,
-            "timestamp": datetime.datetime.now(datetime.timezone.utc)
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }
         writejson(messagefp, messagedata)
         return {"ok": True, "tokenexp": payload["exp"], "messageid": msg.messageid} # pyright: ignore[reportOptionalSubscript]
@@ -230,6 +233,8 @@ def getMessage(x: MessageGetModel):
         if not os.path.exists(messagefp):
             error("message_not_found", 404)
         messagedata = readjson(messagefp)
+        if payload["sub"] not in [messagedata.get("sender"), messagedata.get("reciever")]: # pyright: ignore[reportOptionalSubscript]
+            error("unauthorized_access", 403)
         return {"ok": True, "tokenexp": payload["exp"], "message": messagedata} # pyright: ignore[reportOptionalSubscript]
     except Exception:
         error("failed_to_get_message", 500)
