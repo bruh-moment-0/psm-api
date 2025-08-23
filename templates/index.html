@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>PSM API webpage V1</h2>
+<ul>
+  {% for i in items %}
+    <li>{{ i }}</li>
+  {% endfor %}
+</ul>
+<form action="/details-submit" method="post">
+  <p>enter username bellow to search details</p>
+  <input name="username" placeholder="enter here">
+  <button type="submit">search</button>
+</form>
+{% set error_map = {
+    "USER_NOT_FOUND": "User not found",
+    "USER_DATA_BROKEN": "User data corrupted"
+} %}
+{% if request.query_params.get("error") in error_map %}
+<script>
+    alert("{{ error_map[request.query_params.get('error')] }}");
+</script>
+{% endif %}
+{% endblock %}
