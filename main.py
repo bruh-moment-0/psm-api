@@ -1,18 +1,19 @@
 from fastapi import FastAPI, Request, HTTPException, Form, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from fastapi.responses import HTMLResponse, RedirectResponse
 from cryptography.exceptions import InvalidSignature
+from dateutil.relativedelta import relativedelta
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from dateutil.relativedelta import relativedelta
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import Optional
 from data import *
-import jwt
-import time
-import os
+import hashlib
 import uuid
+import time
+import jwt
+import os
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -31,7 +32,7 @@ def now():
     return int(time.time())
 
 # === Schemas ===
-class Message(BaseModel):
+class MessageSendModel(BaseModel):
     messageid: str
     sender: str
     sendertoken: str
@@ -40,6 +41,15 @@ class Message(BaseModel):
     reciever_pk: str
     shared_secret: str
     payload: str
+
+class MessageGetModel(BaseModel):
+    messageid: str
+    sendertoken: str
+
+class MessageIDGENModel(BaseModel):
+    sender: str
+    sendertoken: str
+    reciever: str
 
 class UserClassModel(BaseModel):
     username: str
@@ -74,6 +84,27 @@ def verify_token(token: str) -> Optional[dict]:
         return payload
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
+
+def get_chat_hash(user1: str, user2: str) -> str:
+    # Order-independent hash
+    sorted_pair = sorted([user1, user2])
+    return hashlib.sha256("".join(sorted_pair).encode()).hexdigest()[:12]  # shorten if you want
+
+def get_next_msg_id(sender: str, receiver: str) -> str:
+    chat_hash = get_chat_hash(sender, receiver)
+    counter_file = os.path.join(MESSAGECOUNTERDIR, f"{chat_hash}-V1.json")
+    if os.path.exists(counter_file):
+        data = readjson(counter_file)
+        counter = data.get("counter", 0) + 1
+    else:
+        data = {
+            "sender": sender,
+            "receiver": receiver
+        }
+        counter = 1
+    data["counter"] = counter # pyright: ignore[reportArgumentType]
+    writejson(counter_file, data)
+    return f"{chat_hash}-{counter}"
 
 # === Endpoints ===
 @app.get("/", response_class=HTMLResponse)
@@ -164,12 +195,14 @@ def protected(req: Request):
     # exp payload is important for client-side to remind the client to auto request new tokens
 
 @app.post("/api/message/send")
-def sendMessage(msg: Message):
+def sendMessage(msg: MessageSendModel):
     try:
         senderfp = os.path.join(USERDIR, f"{msg.sender}-V1.json")
         if not os.path.exists(senderfp):
             error("sender_not_found", 404)
         payload = verify_token(msg.sendertoken)
+        if not payload:
+            error("token_invalid_or_expired", 401)
         messagefp = os.path.join(MESSAGEDIR, f"{msg.messageid}-msg-V1.json")
         messagedata = {
             "messageid": msg.messageid,
@@ -187,84 +220,26 @@ def sendMessage(msg: Message):
     except Exception:
         error("failed_to_send_message", 500)
 
-# bellow is AI generated code to be further refined.
-
-# API endpoint to get messages for a user (inbox)
-@app.get("/api/messages/inbox/{username}")
-def getInbox(username: str):
+@app.get("/api/message/get/{messageid}")
+def getMessage(x: MessageGetModel):
     try:
-        inbox_messages = []
-        
-        # Read all message files in the messages directory
-        for filename in os.listdir(MESSAGEDIR):
-            if filename.endswith('.json'):
-                message_filepath = os.path.join(MESSAGEDIR, filename)
-                message_data = readjson(message_filepath)
-                
-                # Check if this message is for the user
-                if message_data.get("reciever") == username:
-                    inbox_messages.append(message_data)
-        
-        # Sort by timestamp (newest first)
-        inbox_messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        
-        return {
-            "status": "success",
-            "messages": inbox_messages,
-            "count": len(inbox_messages)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get inbox: {str(e)}")
+        payload = verify_token(x.sendertoken)
+        if not payload:
+            error("token_invalid_or_expired", 401)
+        messagefp = os.path.join(MESSAGEDIR, f"{x.messageid}-msg-V1.json")
+        if not os.path.exists(messagefp):
+            error("message_not_found", 404)
+        messagedata = readjson(messagefp)
+        return {"ok": True, "tokenexp": payload["exp"], "message": messagedata} # pyright: ignore[reportOptionalSubscript]
+    except Exception:
+        error("failed_to_get_message", 500)
 
-# API endpoint to get messages sent by a user
-@app.get("/api/messages/sent/{username}")
-def getSent(username: str):
-    try:
-        sent_messages = []
-        
-        # Read all message files in the messages directory
-        for filename in os.listdir(MESSAGEDIR):
-            if filename.endswith('.json'):
-                message_filepath = os.path.join(MESSAGEDIR, filename)
-                message_data = readjson(message_filepath)
-                
-                # Check if this message was sent by the user
-                if message_data.get("sender") == username:
-                    sent_messages.append(message_data)
-        
-        # Sort by timestamp (newest first)
-        sent_messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        
-        return {
-            "status": "success",
-            "messages": sent_messages,
-            "count": len(sent_messages)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get sent messages: {str(e)}")
-
-# API endpoint to get a specific message by ID
-@app.get("/api/messages/{messageid}")
-def getMessage(messageid: str):
-    try:
-        message_filepath = os.path.join(MESSAGEDIR, f"{messageid}.json")
-        
-        if not os.path.exists(message_filepath):
-            raise HTTPException(status_code=404, detail="Message not found")
-        
-        message_data = readjson(message_filepath)
-        
-        return {
-            "status": "success",
-            "message": message_data
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get message: {str(e)}")
+@app.get("/api/message/genid")
+def genID(x: MessageIDGENModel):
+    payload = verify_token(x.sendertoken)
+    if not payload:
+        error("token_invalid_or_expired", 401)
+    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(x.sender, x.reciever)} # pyright: ignore[reportOptionalSubscript]
 
 if __name__ == "__main__":
     import uvicorn

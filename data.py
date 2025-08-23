@@ -13,6 +13,7 @@ VERSION = "V1"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 MESSAGEDIR = os.path.join(BASEDIR, "messages")
+MESSAGECOUNTERDIR = os.path.join(MESSAGEDIR, "messagecounter")
 STORAGE = os.path.join(BASEDIR, "storage")
 USERDIR = os.path.join(STORAGE, "users")
 AUTHCHALLENGEDIR = os.path.join(STORAGE, "challenge")
