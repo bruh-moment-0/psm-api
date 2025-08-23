@@ -2,7 +2,6 @@
 
 from typing import Any
 import datetime # i normally go with time but thats just not cool as this
-import hashlib
 import base64
 import json # "in json we believe" - json cult /s
 import os
@@ -34,9 +33,6 @@ def byte2str(bytetext: bytes) -> str:
 
 def byte2b64(bytetext: bytes) -> str:
     return base64.b64encode(bytetext).decode()
-
-def hash_sha3_512(data: bytes) -> str:
-    return hashlib.sha3_512(data).hexdigest()
 
 def writejson(filepath: str, data: Any, indent: int = 4) -> None:
     with open(filepath, "w", encoding="utf-8") as f:
