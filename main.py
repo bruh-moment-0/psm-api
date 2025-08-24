@@ -19,6 +19,7 @@ VERSION = "V1.1.5 INDEV (built 21:02 24/08/2025)"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 STATICDIR = os.path.join(BASEDIR, "static")
 TEMPLATESDIR = os.path.join(BASEDIR, "templates")
+ACCESS_TTL = 900 # 15 min
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=STATICDIR), name="static")
@@ -30,8 +31,7 @@ ACCESS_KEY = os.getenv("ACCESS_KEY")
 if not ACCESS_KEY: # generate once and keep in .env for persistence
     ACCESS_KEY = os.urandom(32).hex()
     with open(".env", "a") as f:
-        f.write(f"\nACCESS_KEY={ACCESS_KEY}\n")
-ACCESS_TTL = 900 # 15 min
+        f.write(f"ACCESS_KEY={ACCESS_KEY}")
 
 def now():
     return int(time.time())
@@ -120,10 +120,10 @@ def homeUI(request: Request):
 async def submitUI(username: str = Form(...)):
     filepath = os.path.join(USERDIR, f"{username}-V1.json")
     if not os.path.exists(filepath):
-        return RedirectResponse(url=f"/?error=USER_NOT_FOUND", status_code=302)
+        return RedirectResponse(url="/?error=USER_NOT_FOUND", status_code=303)
     data = readjson(filepath)
     if not data:
-        return RedirectResponse(url=f"/?error=USER_DATA_BROKEN", status_code=302)
+        return RedirectResponse(url=f"/?error=USER_DATA_BROKEN", status_code=303)
     return RedirectResponse(url=f"/user/{data['username']}", status_code=302)
 
 @app.get("/user/{username}", response_class=HTMLResponse)
@@ -250,6 +250,31 @@ def genID(x: MessageIDGENModel):
     if not payload:
         error("token_invalid_or_expired", 401)
     return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(x.sender, x.reciever)} # pyright: ignore[reportOptionalSubscript]
+
+@app.get("/api/user/{username}", response_class=HTMLResponse)
+def getUser(request: Request, username: str):
+    filepath = os.path.join(USERDIR, f"{username}-V1.json")
+    if not os.path.exists(filepath):
+        error("user_not_found", 404)
+    data = readjson(filepath)
+    if not data:
+        error("user_data_broken", 500)
+    ver = data["ver"]
+    usertype = data["type"]
+    creation = data["creation"]
+    publickey = data["publickey"]
+    dt = datetime.datetime.fromtimestamp(creation, datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    age = relativedelta(now, dt)
+    agestr = f"{age.years}y {age.months}m {age.days}d {age.hours}h {age.minutes}m {age.seconds}s"
+    data = {
+        "ver": ver,
+        "usertype": usertype,
+        "creation": creation,
+        "publickey": publickey,
+        "agestr": agestr
+    }
+    return {"ok": True, "data": data}
 
 if __name__ == "__main__":
     import uvicorn

@@ -54,7 +54,6 @@ class UserClass:
             raise UserExistsError(f"username {username} exists")
         self.username = username
         self.creation = datetime.datetime.now(datetime.timezone.utc)
-        self.serversalt = os.urandom(16)
         self.publickey = publickey
         data = {
             "ver": VERSION,
