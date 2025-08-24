@@ -15,6 +15,7 @@ import time
 import jwt
 import os
 
+VERSION = "V1.1.5 INDEV (built 21:02 24/08/2025)"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 STATICDIR = os.path.join(BASEDIR, "static")
 TEMPLATESDIR = os.path.join(BASEDIR, "templates")

@@ -7,7 +7,6 @@ import json # "in json we believe" - json cult /s
 import os
 
 VERSION = "V1.1.5 INDEV (built 21:02 24/08/2025)"
-
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 MESSAGEDIR = os.path.join(BASEDIR, "messages")
