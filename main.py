@@ -15,9 +15,13 @@ import time
 import jwt
 import os
 
+BASEDIR = os.path.abspath(os.path.dirname(__file__))
+STATICDIR = os.path.join(BASEDIR, "static")
+TEMPLATESDIR = os.path.join(BASEDIR, "templates")
+
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory=STATICDIR), name="static")
+templates = Jinja2Templates(directory=TEMPLATESDIR)
 
 # auth settings
 load_dotenv(dotenv_path=DOTENV_PATH)
@@ -109,7 +113,7 @@ def get_next_msg_id(sender: str, receiver: str) -> str:
 # === Endpoints ===
 @app.get("/", response_class=HTMLResponse)
 def homeUI(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "version": VERSION})
 
 @app.post("/details-submit")
 async def submitUI(username: str = Form(...)):
