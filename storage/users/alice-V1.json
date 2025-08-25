@@ -1,0 +1,8 @@
+{
+    "ver": "V1.1.5 INDEV (built 21:02 24/08/2025)",
+    "type": "class User",
+    "username": "alice",
+    "publickey_kyber": "None",
+    "publickey_ed25519": "9165f8928421fada42e4609690f59c5b8f4aaebc35b5ce9b2acf32995d4d9f83",
+    "creation": 1756116974
+}
