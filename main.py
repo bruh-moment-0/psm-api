@@ -148,7 +148,7 @@ def register(x: UserClassModel):
     uf = os.path.join(USERDIR, f"{x.username}-V1.json")
     if os.path.exists(uf):
         error("user_exists", 400)
-    writejson(uf, UserClass(x.username, x.publickey_kyber, x.publickey_ed25519))
+    writejson(uf, UserClass(x.username, x.publickey_kyber, x.publickey_ed25519).out())
     return {"ok": True}
 
 @app.post("/auth/challenge")

@@ -56,18 +56,18 @@ class UserClass:
         self.creation = datetime.datetime.now(datetime.timezone.utc)
         self.publickey_kyber = publickey_kyber
         self.publickey_ed25519 = publickey_ed25519
-        data = {
+    def out(self):
+        return {
             "ver": VERSION,
             "type": "class User",
             "username": self.username,
-            "publickey_kyber": publickey_kyber,
-            "publickey_ed25519": publickey_ed25519,
+            "publickey_kyber": self.publickey_kyber,
+            "publickey_ed25519": self.publickey_ed25519,
             "creation": int(self.creation.timestamp())
         }
-        return data
 
 if __name__ == "__main__":
     try:
-        UserClass("alice", "None", "9165f8928421fada42e4609690f59c5b8f4aaebc35b5ce9b2acf32995d4d9f83")
+        _ = UserClass("alice", "None", "9165f8928421fada42e4609690f59c5b8f4aaebc35b5ce9b2acf32995d4d9f83")
     except UserExistsError as e:
         print(e)
