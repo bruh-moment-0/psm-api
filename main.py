@@ -55,6 +55,7 @@ class MessageIDGENModel(BaseModel):
     sender: str
     sendertoken: str
     reciever: str
+    update: bool
 
 class UserClassModel(BaseModel):
     username: str
@@ -96,20 +97,23 @@ def get_chat_hash(user1: str, user2: str) -> str:
     sorted_pair = sorted([user1, user2])
     return hashlib.sha256("".join(sorted_pair).encode()).hexdigest()[:12]  # shorten if you want
 
-def get_next_msg_id(sender: str, receiver: str) -> str:
+def get_next_msg_id(sender: str, receiver: str, update: bool) -> str:
     chat_hash = get_chat_hash(sender, receiver)
     counter_file = os.path.join(MESSAGECOUNTERDIR, f"{chat_hash}-V1.json")
     if os.path.exists(counter_file):
         data = readjson(counter_file)
-        counter = data.get("counter", 0) + 1
+        counter = data.get("counter", 0)
     else:
         data = {
             "sender": sender,
-            "receiver": receiver
+            "receiver": receiver,
+            "counter": 0
         }
-        counter = 1
-    data["counter"] = counter # pyright: ignore[reportArgumentType]
-    writejson(counter_file, data)
+        counter = 0
+    if update:
+        counter += 1
+        data["counter"] = counter
+        writejson(counter_file, data)
     return f"{chat_hash}-{counter}"
 
 # === Endpoints ===
@@ -250,7 +254,7 @@ def genID(x: MessageIDGENModel):
     payload = verify_token(x.sendertoken)
     if not payload:
         error("token_invalid_or_expired", 401)
-    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(x.sender, x.reciever)} # pyright: ignore[reportOptionalSubscript]
+    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(x.sender, x.reciever, x.update)} # pyright: ignore[reportOptionalSubscript]
 
 @app.get("/api/user/{username}", response_class=HTMLResponse)
 def getUser(request: Request, username: str):
