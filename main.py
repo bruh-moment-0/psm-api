@@ -58,7 +58,8 @@ class MessageIDGENModel(BaseModel):
 
 class UserClassModel(BaseModel):
     username: str
-    publickey: str
+    publickey_kyber: str
+    publickey_ed25519: str
 
 class LoginStartIn(BaseModel):
     username: str
@@ -133,13 +134,13 @@ def showUserUI(request: Request, username: str):
     ver = data["ver"]
     usertype = data["type"]
     creation = data["creation"]
-    publickey = data["publickey"]
+    publickey_kyber = data["publickey_kyber"]
     dt = datetime.datetime.fromtimestamp(creation, datetime.timezone.utc)
     now = datetime.datetime.now(datetime.timezone.utc)
     age = relativedelta(now, dt)
     agestr = f"{age.years}y {age.months}m {age.days}d {age.hours}h {age.minutes}m {age.seconds}s"
     info = f"ver: {ver}\ntype: {usertype}\ncreation {dt.strftime('%d-%m-%Y %H:%M:%S UTC')} (DD/MM/YYYY hh:mm:ss)\n"
-    info += f"account age: {agestr}\npublic key: {publickey}"
+    info += f"account age: {agestr}\npublic key: {publickey_kyber}"
     return templates.TemplateResponse("user.html", {"request": request, "title": username, "info": info})
 
 @app.post("/auth/register")
@@ -147,7 +148,7 @@ def register(x: UserClassModel):
     uf = os.path.join(USERDIR, f"{x.username}-V1.json")
     if os.path.exists(uf):
         error("user_exists", 400)
-    writejson(uf, UserClass(x.username, x.publickey))
+    writejson(uf, UserClass(x.username, x.publickey_kyber, x.publickey_ed25519))
     return {"ok": True}
 
 @app.post("/auth/challenge")
@@ -176,7 +177,7 @@ def login_finish(x: LoginFinishIn):
         error("challenge_invalid", 401)
     uf = os.path.join(USERDIR, f"{x.username}-V1.json")
     pub = ed25519.Ed25519PublicKey.from_public_bytes(
-        bytes.fromhex(readjson(uf)["publickey"])
+        bytes.fromhex(readjson(uf)["publickey_ed25519"])
     )
     try:
         pub.verify(bytes.fromhex(x.signature), ch["value"].encode())
@@ -262,7 +263,7 @@ def getUser(request: Request, username: str):
     ver = data["ver"]
     usertype = data["type"]
     creation = data["creation"]
-    publickey = data["publickey"]
+    publickey_kyber = data["publickey_kyber"]
     dt = datetime.datetime.fromtimestamp(creation, datetime.timezone.utc)
     now = datetime.datetime.now(datetime.timezone.utc)
     age = relativedelta(now, dt)
@@ -271,7 +272,7 @@ def getUser(request: Request, username: str):
         "ver": ver,
         "usertype": usertype,
         "creation": creation,
-        "publickey": publickey,
+        "publickey_kyber": publickey_kyber,
         "agestr": agestr
     }
     return {"ok": True, "data": data}

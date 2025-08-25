@@ -48,24 +48,26 @@ class UserExistsError(Exception):
     pass
 
 class UserClass:
-    def __init__(self, username: str, publickey: str):
+    def __init__(self, username: str, publickey_kyber: str, publickey_ed25519):
         filepath = os.path.join(USERDIR, f"{username}-V1.json")
         if os.path.exists(filepath):
             raise UserExistsError(f"username {username} exists")
         self.username = username
         self.creation = datetime.datetime.now(datetime.timezone.utc)
-        self.publickey = publickey
+        self.publickey_kyber = publickey_kyber
+        self.publickey_ed25519 = publickey_ed25519
         data = {
             "ver": VERSION,
             "type": "class User",
             "username": self.username,
-            "publickey": publickey,
+            "publickey_kyber": publickey_kyber,
+            "publickey_ed25519": publickey_ed25519,
             "creation": int(self.creation.timestamp())
         }
         return data
 
 if __name__ == "__main__":
     try:
-        UserClass("alice", "9165f8928421fada42e4609690f59c5b8f4aaebc35b5ce9b2acf32995d4d9f83")
+        UserClass("alice", "None", "9165f8928421fada42e4609690f59c5b8f4aaebc35b5ce9b2acf32995d4d9f83")
     except UserExistsError as e:
         print(e)
