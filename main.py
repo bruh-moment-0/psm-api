@@ -256,7 +256,7 @@ def genID(x: MessageIDGENModel):
         error("token_invalid_or_expired", 401)
     return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(x.sender, x.reciever, x.update)} # pyright: ignore[reportOptionalSubscript]
 
-@app.get("/api/user/{username}", response_class=HTMLResponse)
+@app.get("/api/user/{username}")
 def getUser(request: Request, username: str):
     filepath = os.path.join(USERDIR, f"{username}-V1.json")
     if not os.path.exists(filepath):
