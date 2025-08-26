@@ -6,7 +6,7 @@ import base64
 import json # "in json we believe" - json cult /s
 import os
 
-VERSION = "API V1.1.6 INDEV (built 14:00 25/08/2025)"
+VERSION = "API V1.1.7 STABLE (built 17:45 GMT+0 26/08/2025)"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 MESSAGEDIR = os.path.join(BASEDIR, "messages")
@@ -31,6 +31,9 @@ def byte2str(bytetext: bytes) -> str:
 
 def byte2b64(bytetext: bytes) -> str:
     return base64.b64encode(bytetext).decode()
+
+def b642byte(b64text: str) -> bytes:
+    return base64.b64decode(b64text.encode())
 
 def writejson(filepath: str, data: Any, indent: int = 4) -> None:
     with open(filepath, "w", encoding="utf-8") as f:

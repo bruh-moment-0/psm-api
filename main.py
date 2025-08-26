@@ -182,10 +182,10 @@ def login_finish(x: LoginFinishIn):
         error("challenge_invalid", 401)
     uf = os.path.join(USERDIR, f"{x.username}-V1.json")
     pub = ed25519.Ed25519PublicKey.from_public_bytes(
-        bytes.fromhex(readjson(uf)["publickey_ed25519"])
+        b642byte(readjson(uf)["publickey_ed25519"])
     )
     try:
-        pub.verify(bytes.fromhex(x.signature), ch["value"].encode())
+        pub.verify(b642byte(x.signature), ch["value"].encode())
     except InvalidSignature:
         error("sig_fail", 401)
     challenges.pop(x.challenge_id, None)
