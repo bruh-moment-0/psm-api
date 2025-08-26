@@ -139,12 +139,13 @@ def showUserUI(request: Request, username: str):
     usertype = data["type"]
     creation = data["creation"]
     publickey_kyber = data["publickey_kyber"]
+    key_wrapped = "\n".join([publickey_kyber[i:i+64] for i in range(0, len(publickey_kyber), 64)])
     dt = datetime.datetime.fromtimestamp(creation, datetime.timezone.utc)
     now = datetime.datetime.now(datetime.timezone.utc)
     age = relativedelta(now, dt)
     agestr = f"{age.years}y {age.months}m {age.days}d {age.hours}h {age.minutes}m {age.seconds}s"
     info = f"ver: {ver}\ntype: {usertype}\ncreation {dt.strftime('%d-%m-%Y %H:%M:%S UTC')} (DD/MM/YYYY hh:mm:ss)\n"
-    info += f"account age: {agestr}\npublic key: {publickey_kyber}"
+    info += f"account age: {agestr}\npublic key: {key_wrapped}"
     return templates.TemplateResponse("user.html", {"request": request, "title": username, "info": info})
 
 @app.post("/auth/register")
