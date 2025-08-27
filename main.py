@@ -46,6 +46,7 @@ class MessageSendModel(BaseModel):
     reciever_pk: str
     shared_secret: str
     payload: str
+    ciphertext: str
 
 class MessageGetModel(BaseModel):
     messageid: str
