@@ -251,11 +251,11 @@ def getMessage(x: MessageGetModel):
         error("failed_to_get_message", 500)
 
 @app.get("/api/message/genid")
-def genID(x: MessageIDGENModel):
-    payload = verify_token(x.sendertoken)
+def genID(sender: str, sendertoken: str, reciever: str, update: bool = True):
+    payload = verify_token(sendertoken)
     if not payload:
         error("token_invalid_or_expired", 401)
-    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(x.sender, x.reciever, x.update)} # pyright: ignore[reportOptionalSubscript]
+    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(sender, reciever, update)} # pyright: ignore[reportOptionalSubscript]
 
 @app.get("/api/user/{username}")
 def getUser(request: Request, username: str):
