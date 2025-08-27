@@ -9,11 +9,17 @@ import os
 VERSION = "API V1.1.7 STABLE (built 17:45 GMT+0 26/08/2025)"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
-MESSAGEDIR = os.path.join(BASEDIR, "messages")
-MESSAGECOUNTERDIR = os.path.join(MESSAGEDIR, "messagecounter")
 STORAGE = os.path.join(BASEDIR, "storage")
+MESSAGEDIR = os.path.join(STORAGE, "messages")
+MESSAGECOUNTERDIR = os.path.join(MESSAGEDIR, "messagecounter")
 USERDIR = os.path.join(STORAGE, "users")
 AUTHCHALLENGEDIR = os.path.join(STORAGE, "challenge")
+
+os.makedirs(MESSAGEDIR, exist_ok=True)
+os.makedirs(MESSAGECOUNTERDIR, exist_ok=True)
+os.makedirs(STORAGE, exist_ok=True)
+os.makedirs(USERDIR, exist_ok=True)
+os.makedirs(AUTHCHALLENGEDIR, exist_ok=True)
 
 def b64encodeUrlSafe(x: bytes) -> str:
     return base64.urlsafe_b64encode(x).decode()
@@ -36,6 +42,7 @@ def b642byte(b64text: str) -> bytes:
     return base64.b64decode(b64text.encode())
 
 def writejson(filepath: str, data: Any, indent: int = 4) -> None:
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=indent)
 
