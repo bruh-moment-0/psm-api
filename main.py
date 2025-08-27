@@ -251,7 +251,7 @@ def getMessage(x: MessageGetModel):
         error("failed_to_get_message", 500)
 
 @app.get("/api/message/genid")
-def genID(sender: str, reciever: str, update: bool = True, req: Request = None): # pyright: ignore[reportArgumentType]
+def genID(sender: str, reciever: str, update: str = "True", req: Request = None): # pyright: ignore[reportArgumentType]
     auth = req.headers.get("Authorization")
     if not auth or not auth.lower().startswith("bearer "):
         error("missing_token", 401)
@@ -259,7 +259,8 @@ def genID(sender: str, reciever: str, update: bool = True, req: Request = None):
     payload = verify_token(token)
     if not payload:
         error("token_invalid_or_expired", 401)
-    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(sender, reciever, update)} # pyright: ignore[reportOptionalSubscript]
+    update_bool = update.lower() == "true"
+    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(sender, reciever, update_bool)} # pyright: ignore[reportOptionalSubscript]
 
 @app.get("/api/user/{username}")
 def getUser(request: Request, username: str):
