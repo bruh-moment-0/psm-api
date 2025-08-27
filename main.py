@@ -236,20 +236,17 @@ def sendMessage(msg: MessageSendModel):
         error("failed_to_send_message", 500)
 
 @app.get("/api/message/get/{messageid}")
-def getMessage(x: MessageGetModel):
-    try:
-        payload = verify_token(x.sendertoken)
-        if not payload:
-            error("token_invalid_or_expired", 401)
-        messagefp = os.path.join(MESSAGEDIR, f"{x.messageid}-msg-V1.json")
-        if not os.path.exists(messagefp):
-            error("message_not_found", 404)
-        messagedata = readjson(messagefp)
-        if payload["sub"] not in [messagedata.get("sender"), messagedata.get("reciever")]: # pyright: ignore[reportOptionalSubscript]
-            error("unauthorized_access", 403)
-        return {"ok": True, "tokenexp": payload["exp"], "message": messagedata} # pyright: ignore[reportOptionalSubscript]
-    except Exception:
-        error("failed_to_get_message", 500)
+def getMessage(messageid: str, sendertoken: str):
+    payload = verify_token(sendertoken)
+    if not payload:
+        error("token_invalid_or_expired", 401)
+    messagefp = os.path.join(MESSAGEDIR, f"{messageid}-msg-V1.json")
+    if not os.path.exists(messagefp):
+        error("message_not_found", 404)
+    messagedata = readjson(messagefp)
+    if payload["sub"] not in [messagedata.get("sender"), messagedata.get("reciever")]: # pyright: ignore[reportOptionalSubscript]
+        error("unauthorized_access", 403)
+    return {"ok": True, "tokenexp": payload["exp"], "message": messagedata} # pyright: ignore[reportOptionalSubscript]
 
 @app.get("/api/message/genid")
 def genID(sender: str, reciever: str, update: str = "True", req: Request = None): # pyright: ignore[reportArgumentType]
