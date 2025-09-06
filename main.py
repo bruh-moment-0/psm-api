@@ -44,7 +44,6 @@ class MessageSendModel(BaseModel):
     reciever: str
     sender_pk: str
     reciever_pk: str
-    shared_secret: str
     payload: str
     ciphertext: str
 
@@ -212,12 +211,15 @@ def sendMessage(msg: MessageSendModel):
         senderfp = os.path.join(USERDIR, f"{msg.sender}-V1.json")
         if not os.path.exists(senderfp):
             error("sender_not_found", 404)
+        
         payload = verify_token(msg.sendertoken)
         if not payload or payload["sub"] != msg.sender:
             error("token_invalid_or_expired", 401)
+
         receiverfp = os.path.join(USERDIR, f"{msg.reciever}-V1.json")
         if not os.path.exists(receiverfp):
             error("receiver_not_found", 404)
+
         messagefp = os.path.join(MESSAGEDIR, f"{msg.messageid}-msg-V1.json")
         messagedata = {
             "messageid": msg.messageid,
@@ -226,7 +228,7 @@ def sendMessage(msg: MessageSendModel):
             "tokenexp": payload["exp"], # pyright: ignore[reportOptionalSubscript]
             "sender_pk": msg.sender_pk,
             "reciever_pk": msg.reciever_pk,
-            "shared_secret": msg.shared_secret,
+            "ciphertext": msg.ciphertext,
             "payload": msg.payload,
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }
