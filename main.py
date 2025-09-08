@@ -19,7 +19,7 @@ VERSION = "V1.1.5 INDEV (built 21:02 24/08/2025)"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 STATICDIR = os.path.join(BASEDIR, "static")
 TEMPLATESDIR = os.path.join(BASEDIR, "templates")
-ACCESS_TTL = 900 # 15 min
+ACCESS_TTL = 300 # 5 min
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=STATICDIR), name="static")
@@ -118,7 +118,7 @@ def get_next_msg_id(sender: str, receiver: str, update: bool) -> str:
 
 # === Endpoints ===
 @app.get("/", response_class=HTMLResponse)
-def homeUI(request: Request):
+async def homeUI(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "version": VERSION})
 
 @app.post("/details-submit")

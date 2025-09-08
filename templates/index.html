@@ -13,7 +13,7 @@
 } %}
 {% if request.query_params.get("error") in error_map %}
 <script>
-    alert("{{ error_map[request.query_params.get('error')] }}");
+  alert("{{ error_map[request.query_params.get('error')] }}");
 </script>
 {% endif %}
 {% endblock %}
