@@ -116,6 +116,9 @@ def get_next_msg_id(sender: str, receiver: str, update: bool) -> str:
         writejson(counter_file, data)
     return f"{chat_hash}-{counter}"
 
+def usernameok(username):
+    return (bool(username) and 4 <= len(username) <= 32 and username.isalnum())
+
 # === Endpoints ===
 @app.get("/", response_class=HTMLResponse)
 async def homeUI(request: Request):
@@ -150,11 +153,14 @@ def showUserUI(request: Request, username: str):
 
 @app.post("/auth/register")
 def register(x: UserClassModel):
-    uf = os.path.join(USERDIR, f"{x.username}-V1.json")
-    if os.path.exists(uf):
-        error("user_exists", 400)
-    writejson(uf, UserClass(x.username, x.publickey_kyber, x.publickey_ed25519).out())
-    return {"ok": True}
+    if usernameok(x.username):
+        uf = os.path.join(USERDIR, f"{x.username}-V1.json")
+        if os.path.exists(uf):
+            error("user_exists", 400)
+        writejson(uf, UserClass(x.username, x.publickey_kyber, x.publickey_ed25519).out())
+        return {"ok": True}
+    else:
+        error("bad_username", 404) # fix http num
 
 @app.post("/auth/challenge")
 def login_start(x: LoginStartIn):
