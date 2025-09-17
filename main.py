@@ -41,9 +41,9 @@ class MessageSendModel(BaseModel):
     messageid: str
     sender: str
     sendertoken: str
-    reciever: str
+    receiver: str
     sender_pk: str
-    reciever_pk: str
+    receiver_pk: str
     payload: str
     ciphertext: str
 
@@ -54,7 +54,7 @@ class MessageGetModel(BaseModel):
 class MessageIDGENModel(BaseModel):
     sender: str
     sendertoken: str
-    reciever: str
+    receiver: str
     update: bool
 
 class UserClassModel(BaseModel):
@@ -222,7 +222,7 @@ def sendMessage(msg: MessageSendModel):
         if not payload or payload["sub"] != msg.sender:
             error("token_invalid_or_expired", 401)
 
-        receiverfp = os.path.join(USERDIR, f"{msg.reciever}-V1.json")
+        receiverfp = os.path.join(USERDIR, f"{msg.receiver}-V1.json")
         if not os.path.exists(receiverfp):
             error("receiver_not_found", 404)
 
@@ -230,10 +230,10 @@ def sendMessage(msg: MessageSendModel):
         messagedata = {
             "messageid": msg.messageid,
             "sender": msg.sender,
-            "reciever": msg.reciever,
+            "receiver": msg.receiver,
             "tokenexp": payload["exp"], # pyright: ignore[reportOptionalSubscript]
             "sender_pk": msg.sender_pk,
-            "reciever_pk": msg.reciever_pk,
+            "receiver_pk": msg.receiver_pk,
             "ciphertext": msg.ciphertext,
             "payload": msg.payload,
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -252,12 +252,12 @@ def getMessage(messageid: str, sendertoken: str):
     if not os.path.exists(messagefp):
         error("message_not_found", 404)
     messagedata = readjson(messagefp)
-    if payload["sub"] not in [messagedata.get("sender"), messagedata.get("reciever")]: # pyright: ignore[reportOptionalSubscript]
+    if payload["sub"] not in [messagedata.get("sender"), messagedata.get("receiver")]: # pyright: ignore[reportOptionalSubscript]
         error("unauthorized_access", 403)
     return {"ok": True, "tokenexp": payload["exp"], "message": messagedata} # pyright: ignore[reportOptionalSubscript]
 
 @app.get("/api/message/genid")
-def genID(sender: str, reciever: str, update: str = "True", req: Request = None): # pyright: ignore[reportArgumentType]
+def genID(sender: str, receiver: str, update: str = "True", req: Request = None): # pyright: ignore[reportArgumentType]
     auth = req.headers.get("Authorization")
     if not auth or not auth.lower().startswith("bearer "):
         error("missing_token", 401)
@@ -266,7 +266,7 @@ def genID(sender: str, reciever: str, update: str = "True", req: Request = None)
     if not payload:
         error("token_invalid_or_expired", 401)
     update_bool = update.lower() == "true"
-    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(sender, reciever, update_bool)} # pyright: ignore[reportOptionalSubscript]
+    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(sender, receiver, update_bool)} # pyright: ignore[reportOptionalSubscript]
 
 @app.get("/api/user/{username}")
 def getUser(request: Request, username: str):
