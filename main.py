@@ -217,16 +217,15 @@ def sendMessage(msg: MessageSendModel):
         senderfp = os.path.join(USERDIR, f"{msg.sender}-V1.json")
         if not os.path.exists(senderfp):
             error("sender_not_found", 404)
-        
         payload = verify_token(msg.sendertoken)
         if not payload or payload["sub"] != msg.sender:
             error("token_invalid_or_expired", 401)
-
         receiverfp = os.path.join(USERDIR, f"{msg.receiver}-V1.json")
         if not os.path.exists(receiverfp):
             error("receiver_not_found", 404)
-
         messagefp = os.path.join(MESSAGEDIR, f"{msg.messageid}-msg-V1.json")
+        usercounterfp = os.path.join(USERCOUNTERDIR, f"{msg.sender}-msg-V1.json")
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         messagedata = {
             "messageid": msg.messageid,
             "sender": msg.sender,
@@ -236,10 +235,16 @@ def sendMessage(msg: MessageSendModel):
             "receiver_pk": msg.receiver_pk,
             "ciphertext": msg.ciphertext,
             "payload": msg.payload,
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            "timestamp": timestamp
         }
         writejson(messagefp, messagedata)
-        return {"ok": True, "tokenexp": payload["exp"], "messageid": msg.messageid} # pyright: ignore[reportOptionalSubscript]
+        if os.path.exists(usercounterfp):
+            currentusercounterdata = readjson(usercounterfp)
+        else:
+            currentusercounterdata = {"data": []}
+        currentusercounterdata["data"].append(msg.messageid)
+        writejson(usercounterfp, currentusercounterdata)
+        return {"ok": True, "tokenexp": payload["exp"], "messageid": msg.messageid, "timestamp": timestamp} # pyright: ignore[reportOptionalSubscript]
     except Exception:
         error("failed_to_send_message", 500)
 
