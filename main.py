@@ -211,6 +211,36 @@ def protected(req: Request):
     return {"ok": True, "user": payload["sub"], "exp": payload["exp"]} # pyright: ignore[reportOptionalSubscript]
     # exp payload is important for client-side to remind the client to auto request new tokens
 
+@app.get("/auth/remove")
+def remove(req: Request):
+    auth = req.headers.get("Authorization")
+    if not auth or not auth.lower().startswith("bearer "):
+        error("missing_token", 401)
+    token = auth.split(" ", 1)[1] # pyright: ignore[reportOptionalMemberAccess]
+    payload = verify_token(token)
+    if not payload:
+        error("token_invalid_or_expired", 401)
+    username = payload["sub"] # pyright: ignore[reportOptionalSubscript]
+    userfile = os.path.join(USERDIR, f"{username}-V1.json")
+    challengefile = os.path.join(USERDIR, f"{username}_challenge.json")
+    usermessagelistfile = os.path.join(USERCOUNTERDIR, f"{username}-msg-V1.json")
+    if os.path.exists(usermessagelistfile):
+        messagelistdata = readjson(usermessagelistfile)
+        messageids = messagelistdata.get("data", [])
+        for msgid in messageids:
+            message_file = os.path.join(MESSAGEDIR, f"{msgid}-msg-V1.json")
+            if os.path.exists(message_file):
+                os.remove(message_file)
+        os.remove(usermessagelistfile)
+    if os.path.exists(userfile):
+        os.remove(userfile)
+    if os.path.exists(challengefile):
+        os.remove(challengefile)
+    # Note: Shared chat counter files (e.g., in MESSAGECOUNTERDIR) are not deleted.
+    # They are shared between two users, and deleting them would break the
+    # chat functionality for the remaining user. These files do not contain personal data.
+    return {"ok": True, "detail": f"All data for user '{username}' has been removed."}
+
 @app.post("/api/message/send")
 def sendMessage(msg: MessageSendModel):
     try:

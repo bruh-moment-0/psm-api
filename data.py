@@ -6,7 +6,7 @@ import base64
 import json # "in json we believe" - json cult /s
 import os
 
-VERSION = "API V1.1.8 STABLE (built 20:45 GMT+0 13/09/2025)"
+VERSION = "API V1.9 STABLE (built 20:30 GMT+0 18/09/2025)"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 STORAGE = os.path.join(BASEDIR, "storage")
