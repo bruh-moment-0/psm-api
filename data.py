@@ -6,22 +6,18 @@ import base64
 import json # "in json we believe" - json cult /s
 import os
 
-VERSION = "API V1.9 STABLE (built 20:30 GMT+0 18/09/2025)"
+VERSION = "API V1.9 STABLE (built 20:45 GMT+0 20/09/2025)"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 STORAGE = os.path.join(BASEDIR, "storage")
 BASEMESSAGEDIR = os.path.join(STORAGE, "messages")
 MESSAGECOUNTERDIR = os.path.join(BASEMESSAGEDIR, "messagecounter")
-USERCOUNTERDIR = os.path.join(BASEMESSAGEDIR, "usercounter")
-MESSAGEDIR = os.path.join(BASEMESSAGEDIR, "messages")
 USERDIR = os.path.join(STORAGE, "users")
 AUTHCHALLENGEDIR = os.path.join(STORAGE, "challenge")
 
 os.makedirs(STORAGE, exist_ok=True)
 os.makedirs(BASEMESSAGEDIR, exist_ok=True)
 os.makedirs(MESSAGECOUNTERDIR, exist_ok=True)
-os.makedirs(USERCOUNTERDIR, exist_ok=True)
-os.makedirs(MESSAGEDIR, exist_ok=True)
 os.makedirs(USERDIR, exist_ok=True)
 os.makedirs(AUTHCHALLENGEDIR, exist_ok=True)
 
