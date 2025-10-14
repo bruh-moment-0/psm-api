@@ -15,6 +15,7 @@ import time
 import jwt
 import os
 
+VERSION = "V1.1.5 INDEV (built 21:02 24/08/2025)"
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 STATICDIR = os.path.join(BASEDIR, "static")
 TEMPLATESDIR = os.path.join(BASEDIR, "templates")
@@ -32,16 +33,10 @@ if not ACCESS_KEY: # generate once and keep in .env for persistence
     with open(".env", "a") as f:
         f.write(f"ACCESS_KEY={ACCESS_KEY}")
 
-ADMIN_KEY = os.getenv("ADMIN_KEY")
-
 def now():
     return int(time.time())
 
 # === Schemas ===
-class RemoveUserIn(BaseModel):
-    username: str
-    token: str
-
 class MessageSendModel(BaseModel):
     messageid: str
     sender: str
@@ -215,38 +210,6 @@ def protected(req: Request):
         error("token_invalid_or_expired", 401)
     return {"ok": True, "user": payload["sub"], "exp": payload["exp"]} # pyright: ignore[reportOptionalSubscript]
     # exp payload is important for client-side to remind the client to auto request new tokens
-
-@app.post("/auth/remove")
-def remove_user(x: RemoveUserIn):
-    payload = verify_token(x.token)
-    if not payload or payload["sub"] != x.username:
-        error("token_invalid_or_expired", 401)
-    removed = []
-    userfile = os.path.join(USERDIR, f"{x.username}-V1.json")
-    if os.path.exists(userfile):
-        os.remove(userfile)
-        removed.append(userfile)
-    challengefile = os.path.join(AUTHCHALLENGEDIR, f"{x.username}_challenge.json")
-    if os.path.exists(challengefile):
-        os.remove(challengefile)
-        removed.append(challengefile)
-    for fname in os.listdir(BASEMESSAGEDIR):
-        if fname.endswith("-msg-V1.json"):
-            path = os.path.join(BASEMESSAGEDIR, fname)
-            data = readjson(path)
-            if data.get("sender") == x.username or data.get("receiver") == x.username:
-                os.remove(path)
-                removed.append(path)
-    for fname in os.listdir(MESSAGECOUNTERDIR):
-        path = os.path.join(MESSAGECOUNTERDIR, fname)
-        data = readjson(path)
-        if data.get("sender") == x.username or data.get("receiver") == x.username:
-            os.remove(path)
-            removed.append(path)
-    if not removed:
-        error("user_not_found", 404)
-    return {"ok": True, "removed": x.username, "files_deleted": removed}
-
 
 @app.post("/api/message/send")
 def sendMessage(msg: MessageSendModel):
