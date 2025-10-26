@@ -7,7 +7,7 @@ import json # "in json we believe" - json cult /s
 import os
 
 VERSION = "API V1.1.8 STABLE (built 20:45 GMT+0 13/09/2025)"
-BASEDIR = os.path.abspath(os.path.dirname(__file__))
+BASEDIR = os.path.expanduser("~/app") # alwaysdata app folder
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 STORAGE = os.path.join(BASEDIR, "storage")
 BASEMESSAGEDIR = os.path.join(STORAGE, "messages")
@@ -76,9 +76,3 @@ class UserClass:
             "publickey_ed25519": self.publickey_ed25519,
             "creation": int(self.creation.timestamp())
         }
-
-if __name__ == "__main__":
-    try:
-        writejson(os.path.join(USERDIR, "alice-V1.json"), UserClass("alice", "None", "9165f8928421fada42e4609690f59c5b8f4aaebc35b5ce9b2acf32995d4d9f83").out())
-    except UserExistsError as e:
-        print(e)
