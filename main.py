@@ -45,6 +45,7 @@ class MessageSendModel(BaseModel):
     receiver_pk: str
     payload: str
     ciphertext: str
+    hkdfsalt: str
 
 class MessageGetModel(BaseModel):
     messageid: str
@@ -147,7 +148,7 @@ def showUserUI(request: Request, username: str):
     age = relativedelta(now, dt)
     agestr = f"{age.years}y {age.months}m {age.days}d {age.hours}h {age.minutes}m {age.seconds}s"
     info = f"ver: {ver}\ntype: {usertype}\ncreation {dt.strftime('%d-%m-%Y %H:%M:%S UTC')} (DD/MM/YYYY hh:mm:ss)\n"
-    info += f"account age: {agestr}\npublic key: {key_wrapped}"
+    info += f"account age: {agestr}\npublic key:\n{key_wrapped}"
     return templates.TemplateResponse("user.html", {"request": request, "title": username, "info": info})
 
 @app.post("/auth/register")
@@ -156,10 +157,13 @@ def register(x: UserClassModel):
         uf = os.path.join(USERDIR, f"{x.username}-V1.json")
         if os.path.exists(uf):
             error("user_exists", 400)
+        if len(x.publickey_kyber) != 1580: # public length for kyber 768
+            print(len(x.publickey_kyber))
+            error("bad_kyber_method", 400)
         writejson(uf, UserClass(x.username, x.publickey_kyber, x.publickey_ed25519).out())
         return {"ok": True}
     else:
-        error("bad_username", 404) # fix http num
+        error("bad_username", 400) # fixed http num
 
 @app.post("/auth/challenge")
 def login_start(x: LoginStartIn):
@@ -233,6 +237,7 @@ def sendMessage(msg: MessageSendModel):
             "receiver_pk": msg.receiver_pk,
             "ciphertext": msg.ciphertext,
             "payload": msg.payload,
+            "hkdfsalt": msg.hkdfsalt,
             "timestamp": timestamp
         }
         writejson(messagefp, messagedata)
