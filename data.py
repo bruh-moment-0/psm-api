@@ -6,8 +6,9 @@ import base64
 import json # "in json we believe" - json cult /s
 import os
 
-VERSION = "API V1.1.9 STABLE (built 20:45 GMT+0 1/11/2025)"
-BASEDIR = os.path.expanduser("~/app") # alwaysdata app folder
+VERSION = "API V2.1.0 STABLE (built 15:30 GMT+0 05/11/2025)"
+# BASEDIR = os.path.expanduser("~/app") # alwaysdata app folder
+BASEDIR = os.path.abspath(os.path.dirname(__file__)) # local testing dir
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 STORAGE = os.path.join(BASEDIR, "storage")
 BASEMESSAGEDIR = os.path.join(STORAGE, "messages")
@@ -59,20 +60,22 @@ class UserExistsError(Exception):
     pass
 
 class UserClass:
-    def __init__(self, username: str, publickey_kyber: str, publickey_ed25519):
+    def __init__(self, username: str, publickey_kyber: str, publickey_token: str, publickey_connection: str):
         filepath = os.path.join(USERDIR, f"{username}-V1.json")
         if os.path.exists(filepath):
             raise UserExistsError(f"username {username} exists")
         self.username = username
         self.creation = datetime.datetime.now(datetime.timezone.utc)
         self.publickey_kyber = publickey_kyber
-        self.publickey_ed25519 = publickey_ed25519
+        self.publickey_token = publickey_token
+        self.publickey_connection = publickey_connection
     def out(self):
         return {
             "ver": VERSION,
             "type": "class User",
             "username": self.username,
             "publickey_kyber": self.publickey_kyber,
-            "publickey_ed25519": self.publickey_ed25519,
+            "publickey_token": self.publickey_token,
+            "publickey_connection": self.publickey_connection,
             "creation": int(self.creation.timestamp())
         }

@@ -1,7 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException, Form, Depends
-from cryptography.hazmat.primitives.asymmetric import ed25519
 from fastapi.responses import HTMLResponse, RedirectResponse
-from cryptography.exceptions import InvalidSignature
 from dateutil.relativedelta import relativedelta
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -9,11 +7,13 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import Optional
 from data import *
+from quantum import sign_obj_create, sign, verify
 import hashlib
 import uuid
 import time
 import jwt
 import os
+import re
 
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 STATICDIR = os.path.join(BASEDIR, "static")
@@ -26,11 +26,21 @@ templates = Jinja2Templates(directory=TEMPLATESDIR)
 
 # auth settings
 load_dotenv(dotenv_path=DOTENV_PATH)
+print("loaded .env from:", os.path.abspath(DOTENV_PATH))
 ACCESS_KEY = os.getenv("ACCESS_KEY")
+CONNECTION_PUBLIC_KEY = os.getenv("CONNECTION_PUBLIC_KEY")
+CONNECTION_PRIVATE_KEY = os.getenv("CONNECTION_PRIVATE_KEY")
 if not ACCESS_KEY: # generate once and keep in .env for persistence
     ACCESS_KEY = os.urandom(32).hex()
     with open(".env", "a") as f:
-        f.write(f"ACCESS_KEY={ACCESS_KEY}")
+        f.write(f"\nACCESS_KEY={ACCESS_KEY}")
+if (not CONNECTION_PUBLIC_KEY) or (not CONNECTION_PRIVATE_KEY):
+    raise RuntimeError("CONNECTION_PUBLIC_KEY or CONNECTION_PRIVATE_KEY not in .env")
+CONNECTION_PUBLIC_KEY = b642byte(CONNECTION_PUBLIC_KEY)
+CONNECTION_PRIVATE_KEY = b642byte(CONNECTION_PRIVATE_KEY)
+
+SIGN_TOKEN_OBJ = sign_obj_create()
+SIGN_CONNECTION_OBJ = sign_obj_create(CONNECTION_PRIVATE_KEY)
 
 def now():
     return int(time.time())
@@ -39,12 +49,15 @@ def now():
 class MessageSendModel(BaseModel):
     messageid: str
     sender: str
-    sendertoken: str
     receiver: str
     sender_pk: str
     receiver_pk: str
-    payload: str
     ciphertext: str
+    payload_ciphertext: str
+    payload_tag: str
+    payload_salt: str
+    payload_nonce: str
+    sendertoken: str
     hkdfsalt: str
 
 class MessageGetModel(BaseModel):
@@ -60,7 +73,8 @@ class MessageIDGENModel(BaseModel):
 class UserClassModel(BaseModel):
     username: str
     publickey_kyber: str
-    publickey_ed25519: str
+    publickey_token: str
+    publickey_connection: str
 
 class LoginStartIn(BaseModel):
     username: str
@@ -117,7 +131,7 @@ def get_next_msg_id(sender: str, receiver: str, update: bool) -> str:
     return f"{chat_hash}-{counter}"
 
 def usernameok(username):
-    return (bool(username) and 4 <= len(username) <= 32 and username.isalnum())
+    return (bool(username) and 3 <= len(username) <= 32 and bool(re.search(r'[^a-zA-Z0-9_-]', username)))
 
 # === Endpoints ===
 @app.get("/", response_class=HTMLResponse)
@@ -160,7 +174,7 @@ def register(x: UserClassModel):
         if len(x.publickey_kyber) != 1580: # public length for kyber 768
             print(len(x.publickey_kyber))
             error("bad_kyber_method", 400)
-        writejson(uf, UserClass(x.username, x.publickey_kyber, x.publickey_ed25519).out())
+        writejson(uf, UserClass(x.username, x.publickey_kyber, x.publickey_token, x.publickey_connection).out())
         return {"ok": True}
     else:
         error("bad_username", 400) # fixed http num
@@ -190,12 +204,9 @@ def login_finish(x: LoginFinishIn):
     if ch["username"] != x.username:
         error("challenge_invalid", 401)
     uf = os.path.join(USERDIR, f"{x.username}-V1.json")
-    pub = ed25519.Ed25519PublicKey.from_public_bytes(
-        b642byte(readjson(uf)["publickey_ed25519"])
-    )
-    try:
-        pub.verify(b642byte(x.signature), ch["value"].encode())
-    except InvalidSignature:
+    pub = b642byte(readjson(uf)["publickey_token"])
+    sign_valid = verify(SIGN_TOKEN_OBJ, ch["value"].encode(), b642byte(x.signature), pub)
+    if not sign_valid:
         error("sig_fail", 401)
     challenges.pop(x.challenge_id, None)
     writejson(fp, {"challenges": challenges})
@@ -236,7 +247,10 @@ def sendMessage(msg: MessageSendModel):
             "sender_pk": msg.sender_pk,
             "receiver_pk": msg.receiver_pk,
             "ciphertext": msg.ciphertext,
-            "payload": msg.payload,
+            "payload_ciphertext": msg.payload_ciphertext,
+            "payload_tag": msg.payload_tag,
+            "payload_salt": msg.payload_salt,
+            "payload_nonce": msg.payload_nonce,
             "hkdfsalt": msg.hkdfsalt,
             "timestamp": timestamp
         }
