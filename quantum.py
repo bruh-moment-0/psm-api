@@ -49,5 +49,5 @@ if __name__ == "__main__":
         return base64.b64decode(b64text.encode())
     sign_connection = sign_obj_create()
     public, private = create_key_pair(sign_connection)
-    print(byte2b64(public))
-    print(byte2b64(private))
+    print(public.hex())
+    print(private.hex())

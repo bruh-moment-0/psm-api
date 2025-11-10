@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Form, Depends
+from fastapi import FastAPI, Header, Request, HTTPException, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from dateutil.relativedelta import relativedelta
 from fastapi.templating import Jinja2Templates
@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import Optional
 from data import *
-from quantum import sign_obj_create, sign, verify
+from quantum import sign_obj_create, sign, verify, create_key_pair
 import hashlib
 import uuid
 import time
@@ -24,20 +24,24 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory=STATICDIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATESDIR)
 
-# auth settings
+# env
 load_dotenv(dotenv_path=DOTENV_PATH)
 print("loaded .env from:", os.path.abspath(DOTENV_PATH))
 ACCESS_KEY = os.getenv("ACCESS_KEY")
-CONNECTION_PUBLIC_KEY = os.getenv("CONNECTION_PUBLIC_KEY")
-CONNECTION_PRIVATE_KEY = os.getenv("CONNECTION_PRIVATE_KEY")
+CONNECTION_PUBLIC_KEY_HEX = os.getenv("CONNECTION_PUBLIC_KEY")
+CONNECTION_PRIVATE_KEY_HEX = os.getenv("CONNECTION_PRIVATE_KEY")
 if not ACCESS_KEY: # generate once and keep in .env for persistence
     ACCESS_KEY = os.urandom(32).hex()
     with open(".env", "a") as f:
         f.write(f"\nACCESS_KEY={ACCESS_KEY}")
-if (not CONNECTION_PUBLIC_KEY) or (not CONNECTION_PRIVATE_KEY):
-    raise RuntimeError("CONNECTION_PUBLIC_KEY or CONNECTION_PRIVATE_KEY not in .env")
-CONNECTION_PUBLIC_KEY = b642byte(CONNECTION_PUBLIC_KEY)
-CONNECTION_PRIVATE_KEY = b642byte(CONNECTION_PRIVATE_KEY)
+if (not CONNECTION_PUBLIC_KEY_HEX) or (not CONNECTION_PRIVATE_KEY_HEX):
+    CONNECTION_PUBLIC_KEY, CONNECTION_PRIVATE_KEY = create_key_pair(sign_obj_create())
+    with open(".env", "a") as f:
+        f.write(f"\nCONNECTION_PUBLIC_KEY={CONNECTION_PUBLIC_KEY.hex()}")
+        f.write(f"\nCONNECTION_PRIVATE_KEY={CONNECTION_PRIVATE_KEY.hex()}")
+else:
+    CONNECTION_PUBLIC_KEY = bytes.fromhex(CONNECTION_PUBLIC_KEY_HEX)
+    CONNECTION_PRIVATE_KEY = bytes.fromhex(CONNECTION_PRIVATE_KEY_HEX)
 
 SIGN_TOKEN_OBJ = sign_obj_create()
 SIGN_CONNECTION_OBJ = sign_obj_create(CONNECTION_PRIVATE_KEY)
@@ -76,15 +80,74 @@ class UserClassModel(BaseModel):
     publickey_token: str
     publickey_connection: str
 
-class LoginStartIn(BaseModel):
+class TokenStart(BaseModel):
     username: str
 
-class LoginFinishIn(BaseModel):
+class TokenFinish(BaseModel):
     username: str
     challenge_id: str
     signature: str
 
 # === Helpers ===
+@app.middleware("http")
+async def capture_body_for_signature_verification(request: Request, call_next):
+    # middleware to capture and store request body for signature verification
+    # pydantic consumes the body, so we need to store it in request.state
+    if request.method in ["POST", "PUT", "PATCH"]:
+        body_bytes = await request.body()
+        try:
+            body_dict = json.loads(body_bytes) if body_bytes else {}
+            request.state.body_dict = body_dict
+        except json.JSONDecodeError:
+            request.state.body_dict = {}
+        # important: create new request with body since we consumed it
+        async def receive():
+            return {"type": "http.request", "body": body_bytes}
+        request._receive = receive
+    else:
+        request.state.body_dict = {}
+    response = await call_next(request)
+    return response
+
+def verify_connection_signature_header(request: Request, x_connection_signature: Optional[str], username: Optional[str] = None) -> bool: # pyright: ignore[reportReturnType]
+    if not x_connection_signature:
+        if username is None:
+            return True
+        error("missing_connection_signature", 400)
+    if x_connection_signature == "None":
+        return True
+    if username is None:
+        error("cannot_verify_signature_without_username", 400)
+    user_file = os.path.join(USERDIR, f"{username}-V1.json")
+    if not os.path.exists(user_file):
+        error("user_not_found", 404)
+    user_data = readjson(user_file)
+    user_connection_pubkey = b642byte(user_data.get("publickey_connection")) # pyright: ignore[reportArgumentType]
+    # reconstruct what was signed
+    method = request.method
+    path = request.url.path
+    body_dict = getattr(request.state, "body_dict", {})
+    sign_payload = {
+        "method": method,
+        "path": path,
+        "body": body_dict
+    }
+    sign_payload_str = json.dumps(sign_payload, sort_keys=True, separators=(',', ':'))
+    try:
+        signature_bytes = b642byte(x_connection_signature) # pyright: ignore[reportArgumentType]
+        is_valid = verify(
+            SIGN_CONNECTION_OBJ, 
+            str2byte(sign_payload_str), 
+            signature_bytes, 
+            user_connection_pubkey
+        )
+        if not is_valid:
+            error("invalid_connection_signature", 403)
+        return True
+    except Exception as e:
+        print(f"signature verification failed: {e}")
+        error("signature_verification_failed", 403)
+
 def signAccess(user_id: str) -> str:
     payload = {
         "sub": user_id,
@@ -107,7 +170,7 @@ def verify_token(token: str) -> Optional[dict]:
         return None
 
 def get_chat_hash(user1: str, user2: str) -> str:
-    # Order-independent hash
+    # order-independent hash
     sorted_pair = sorted([user1, user2])
     return hashlib.sha256("".join(sorted_pair).encode()).hexdigest()[:12]  # shorten if you want
 
@@ -131,7 +194,7 @@ def get_next_msg_id(sender: str, receiver: str, update: bool) -> str:
     return f"{chat_hash}-{counter}"
 
 def usernameok(username):
-    return (bool(username) and 3 <= len(username) <= 32 and bool(re.search(r'[^a-zA-Z0-9_-]', username)))
+    return (bool(username) and 3 <= len(username) <= 32 and not bool(re.search(r'[^a-zA-Z0-9_-]', username)))
 
 # === Endpoints ===
 @app.get("/", response_class=HTMLResponse)
@@ -149,7 +212,7 @@ async def submitUI(username: str = Form(...)):
     return RedirectResponse(url=f"/user/{data['username']}", status_code=302)
 
 @app.get("/user/{username}", response_class=HTMLResponse)
-def showUserUI(request: Request, username: str):
+async def showUserUI(request: Request, username: str):
     filepath = os.path.join(USERDIR, f"{username}-V1.json")
     data = readjson(filepath)
     ver = data["ver"]
@@ -158,15 +221,16 @@ def showUserUI(request: Request, username: str):
     publickey_kyber = data["publickey_kyber"]
     key_wrapped = "\n".join([publickey_kyber[i:i+64] for i in range(0, len(publickey_kyber), 64)])
     dt = datetime.datetime.fromtimestamp(creation, datetime.timezone.utc)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    age = relativedelta(now, dt)
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    age = relativedelta(now_dt, dt)
     agestr = f"{age.years}y {age.months}m {age.days}d {age.hours}h {age.minutes}m {age.seconds}s"
     info = f"ver: {ver}\ntype: {usertype}\ncreation {dt.strftime('%d-%m-%Y %H:%M:%S UTC')} (DD/MM/YYYY hh:mm:ss)\n"
     info += f"account age: {agestr}\npublic key:\n{key_wrapped}"
     return templates.TemplateResponse("user.html", {"request": request, "title": username, "info": info})
 
 @app.post("/auth/register")
-def register(x: UserClassModel):
+async def register(x: UserClassModel, request: Request, x_connection_signature: Optional[str] = Header(None)):
+    verify_connection_signature_header(request, x_connection_signature, None)
     if usernameok(x.username):
         uf = os.path.join(USERDIR, f"{x.username}-V1.json")
         if os.path.exists(uf):
@@ -180,7 +244,8 @@ def register(x: UserClassModel):
         error("bad_username", 400) # fixed http num
 
 @app.post("/auth/challenge")
-def login_start(x: LoginStartIn):
+async def login_start(x: TokenStart, request: Request, x_connection_signature: Optional[str] = Header(None)):
+    verify_connection_signature_header(request, x_connection_signature, x.username)
     uf = os.path.join(USERDIR, f"{x.username}-V1.json")
     if not os.path.exists(uf):
         error("user_not_found", 404)
@@ -194,7 +259,8 @@ def login_start(x: LoginStartIn):
     return {"challenge_id": cid, "challenge": val}
 
 @app.post("/auth/respond")
-def login_finish(x: LoginFinishIn):
+def login_finish(x: TokenFinish, request: Request, x_connection_signature: Optional[str] = Header(None)):
+    verify_connection_signature_header(request, x_connection_signature, x.username)
     fp = os.path.join(USERDIR, f"{x.username}_challenge.json")
     data = readjson(fp)
     challenges = cleanup_challenges(data.get("challenges", {}))
@@ -214,7 +280,7 @@ def login_finish(x: LoginFinishIn):
     return {"access_token": tok, "token_type": "bearer"}
 
 @app.get("/auth/protected")
-def protected(req: Request):
+async def protected(req: Request):
     auth = req.headers.get("Authorization")
     if not auth or not auth.lower().startswith("bearer "):
         error("missing_token", 401)
@@ -226,7 +292,8 @@ def protected(req: Request):
     # exp payload is important for client-side to remind the client to auto request new tokens
 
 @app.post("/api/message/send")
-def sendMessage(msg: MessageSendModel):
+async def sendMessage(msg: MessageSendModel, request: Request, x_connection_signature: Optional[str] = Header(None)):
+    verify_connection_signature_header(request, x_connection_signature, msg.sender)
     try:
         senderfp = os.path.join(USERDIR, f"{msg.sender}-V1.json")
         if not os.path.exists(senderfp):
@@ -260,7 +327,7 @@ def sendMessage(msg: MessageSendModel):
         error("failed_to_send_message", 500)
 
 @app.get("/api/message/get/{messageid}")
-def getMessage(messageid: str, sendertoken: str):
+async def getMessage(messageid: str, sendertoken: str):
     payload = verify_token(sendertoken)
     if not payload:
         error("token_invalid_or_expired", 401)
@@ -272,20 +339,16 @@ def getMessage(messageid: str, sendertoken: str):
         error("unauthorized_access", 403)
     return {"ok": True, "tokenexp": payload["exp"], "message": messagedata} # pyright: ignore[reportOptionalSubscript]
 
-@app.get("/api/message/genid")
-def genID(sender: str, receiver: str, update: str = "True", req: Request = None): # pyright: ignore[reportArgumentType]
-    auth = req.headers.get("Authorization")
-    if not auth or not auth.lower().startswith("bearer "):
-        error("missing_token", 401)
-    token = auth.split(" ", 1)[1] # pyright: ignore[reportOptionalMemberAccess]
-    payload = verify_token(token)
-    if not payload:
+@app.post("/api/message/genid")
+async def genID(x: MessageIDGENModel, request: Request, x_connection_signature: Optional[str] = Header(None)): # pyright: ignore[reportArgumentType]
+    verify_connection_signature_header(request, x_connection_signature, x.sender)
+    payload = verify_token(x.sendertoken)
+    if not payload or payload["sub"] != x.sender:
         error("token_invalid_or_expired", 401)
-    update_bool = update.lower() == "true"
-    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(sender, receiver, update_bool)} # pyright: ignore[reportOptionalSubscript]
+    return {"ok": True, "tokenexp": payload["exp"], "msgid": get_next_msg_id(x.sender, x.receiver, x.update)} # pyright: ignore[reportOptionalSubscript]
 
 @app.get("/api/user/{username}")
-def getUser(request: Request, username: str):
+async def getUser(request: Request, username: str):
     filepath = os.path.join(USERDIR, f"{username}-V1.json")
     if not os.path.exists(filepath):
         error("user_not_found", 404)
@@ -297,8 +360,8 @@ def getUser(request: Request, username: str):
     creation = data["creation"]
     publickey_kyber = data["publickey_kyber"]
     dt = datetime.datetime.fromtimestamp(creation, datetime.timezone.utc)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    age = relativedelta(now, dt)
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    age = relativedelta(now_dt, dt)
     agestr = f"{age.years}y {age.months}m {age.days}d {age.hours}h {age.minutes}m {age.seconds}s"
     data = {
         "ver": ver,
