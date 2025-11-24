@@ -6,9 +6,9 @@ import base64
 import json # "in json we believe" - json cult /s
 import os
 
-VERSION = "API V2.1.1 STABLE (built 12:25 GMT+0 9/11/2025)"
-# BASEDIR = os.path.expanduser("~/app") # alwaysdata app folder
-BASEDIR = os.path.abspath(os.path.dirname(__file__)) # local testing dir
+VERSION = "API V2.2 STABLE (built 12:25 GMT+0 9/11/2025)"
+BASEDIR = os.path.expanduser("~/app") # alwaysdata app folder
+# BASEDIR = os.path.abspath(os.path.dirname(__file__)) # local testing dir
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 STORAGE = os.path.join(BASEDIR, "storage")
 BASEMESSAGEDIR = os.path.join(STORAGE, "messages")
