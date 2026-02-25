@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Form
+from fastapi import FastAPI, Request, HTTPException, Header, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from dateutil.relativedelta import relativedelta
 from fastapi.templating import Jinja2Templates
@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import Optional
 from data import *
-from quantum import sign_obj_create, verify, create_key_pair
+from quantum import sign_obj_create, verify
 import hashlib
 import uuid
 import time
@@ -20,6 +20,7 @@ print(f"current time is: {time.ctime()}")
 print("have a nice day, admin!")
 
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
+DOTENV_PATH = os.path.join(BASEDIR, ".env")
 STATICDIR = os.path.join(BASEDIR, "static")
 TEMPLATESDIR = os.path.join(BASEDIR, "templates")
 ACCESS_TTL = 300 # 5 min
@@ -31,13 +32,19 @@ templates = Jinja2Templates(directory=TEMPLATESDIR)
 # env
 load_dotenv(dotenv_path=DOTENV_PATH)
 print("loaded .env from:", os.path.abspath(DOTENV_PATH))
-ACCESS_KEY = os.getenv("ACCESS_KEY")
+ACCESS_KEY = os.getenv("ACCESS_KEY", "")
 if not ACCESS_KEY: # generate once and keep in .env for persistence
     ACCESS_KEY = os.urandom(32).hex()
     with open(".env", "a") as f:
         f.write(f"\nACCESS_KEY={ACCESS_KEY}")
 
+ACCESS_KEY: str
+
 SIGN_TOKEN_OBJ = sign_obj_create()
+
+# DIHM cache: stores {username: {"data": dihmdata, "timestamp": last_check_time}}
+DIHM_CACHE: dict[str, dict] = {}
+DIHM_CACHE_TTL = 10  # seconds - only check DIHM file at most once every 10 seconds per user
 
 def now():
     return int(time.time())
@@ -78,6 +85,11 @@ class TokenFinish(BaseModel):
     username: str
     challenge_id: str
     signature: str
+
+class DIHMAdd(BaseModel):
+    sender: str
+    sendertoken: str
+    receiver: str
 
 # === Helpers ===
 def signAccess(user_id: str) -> str:
@@ -200,7 +212,7 @@ def login_finish(x: TokenFinish):
         error("challenge_invalid", 401)
     uf = os.path.join(USERDIR, f"{x.username}-V1.json")
     pub = b642byte(readjson(uf)["publickey_token"])
-    sign_valid = verify(SIGN_TOKEN_OBJ, ch["value"].encode(), b642byte(x.signature), pub)
+    sign_valid = verify(SIGN_TOKEN_OBJ, bytes.fromhex(ch["value"]), b642byte(x.signature), pub)
     if not sign_valid:
         error("sig_fail", 401)
     challenges.pop(x.challenge_id, None)
@@ -209,11 +221,7 @@ def login_finish(x: TokenFinish):
     return {"access_token": tok, "token_type": "bearer"}
 
 @app.get("/auth/protected")
-async def protected(req: Request):
-    auth = req.headers.get("Authorization")
-    if not auth or not auth.lower().startswith("bearer "):
-        error("missing_token", 401)
-    token = auth.split(" ", 1)[1] # pyright: ignore[reportOptionalMemberAccess]
+async def protected(req: Request, token: str = Header()):
     payload = verify_token(token)
     if not payload:
         error("token_invalid_or_expired", 401)
@@ -246,13 +254,28 @@ async def sendMessage(msg: MessageSendModel):
             "hkdfsalt": msg.hkdfsalt,
         }
         writejson(messagefp, messagedata)
+        if msg.messageid.split("-")[1] == "1":
+            # first message, update to DIHM
+            filefp = os.path.join(DIHMDIR, f"{msg.sender}-V1.json")
+            if not os.path.exists(filefp):
+                dihmdata = {"users": []}
+                writejson(filefp, dihmdata)
+            dihmdata = readjson(filefp)
+            try:
+                if msg.receiver not in dihmdata.get("users", []):
+                    dihmdata.setdefault("users", []).append(msg.receiver)
+                    writejson(filefp, dihmdata)
+                    # Invalidate cache for sender so next check gets fresh data
+                    DIHM_CACHE.pop(msg.sender, None)
+            except:
+                error("dihm_list_add_error", 404)
         return {"ok": True, "tokenexp": payload["exp"], "messageid": msg.messageid} # pyright: ignore[reportOptionalSubscript]
     except Exception:
         error("failed_to_send_message", 500)
 
 @app.get("/api/message/get/{messageid}")
-async def getMessage(messageid: str, sendertoken: str):
-    payload = verify_token(sendertoken)
+async def getMessage(messageid: str, token: str = Header()):
+    payload = verify_token(token)
     if not payload:
         error("token_invalid_or_expired", 401)
     messagefp = os.path.join(BASEMESSAGEDIR, f"{messageid}-msg-V1.json")
@@ -294,6 +317,56 @@ async def getUser(request: Request, username: str):
         "agestr": agestr
     }
     return {"ok": True, "data": data}
+
+@app.get("/api/dihm/check/{username}")
+async def dihmCheck(username: str, token: str = Header()):
+    payload = verify_token(token)
+    if not payload or payload["sub"] != username:
+        error("token_invalid_or_expired", 401)
+    
+    # Check cache first - only read from disk if cache is stale
+    current_time = now()
+    cached = DIHM_CACHE.get(username)
+    
+    if cached and (current_time - cached["timestamp"]) < DIHM_CACHE_TTL:
+        # Return cached data if still fresh
+        return {"ok": True, "exp": payload["exp"], "dihm": cached["data"], "cached": True} # pyright: ignore[reportOptionalSubscript]
+    
+    # Cache is stale or doesn't exist, read from disk
+    filefp = os.path.join(DIHMDIR, f"{username}-V1.json")
+    if not os.path.exists(filefp):
+        dihmdata = {"users": []}
+        writejson(filefp, dihmdata)
+    else:
+        dihmdata = readjson(filefp)
+    
+    # Update cache
+    DIHM_CACHE[username] = {"data": dihmdata, "timestamp": current_time}
+    
+    return {"ok": True, "exp": payload["exp"], "dihm": dihmdata, "cached": False} # pyright: ignore[reportOptionalSubscript]
+
+@app.post("/api/dihm/add/")
+async def dihmAdd(dihmackdat: DIHMAdd):
+    payload = verify_token(dihmackdat.sendertoken)
+    if not payload or payload["sub"] != dihmackdat.sender:
+        error("token_invalid_or_expired", 401)
+    filefp = os.path.join(DIHMDIR, f"{dihmackdat.sender}-V1.json")
+    if not os.path.exists(filefp):
+        dihmdata = {"users": []}
+        writejson(filefp, dihmdata)
+    receiverfp = os.path.join(USERDIR, f"{dihmackdat.receiver}-V1.json")
+    if not os.path.exists(receiverfp):
+        error("receiver_not_found", 404)
+    dihmdata = readjson(filefp)
+    try:
+        if dihmackdat.receiver not in dihmdata.get("users", []):
+            dihmdata.setdefault("users", []).append(dihmackdat.receiver)
+            writejson(filefp, dihmdata)
+            # Invalidate cache for sender so next check gets fresh data
+            DIHM_CACHE.pop(dihmackdat.sender, None)
+    except:
+        error("dihm_list_append_error", 404)
+    return {"ok": True, "tokenexp": payload["exp"]} # pyright: ignore[reportOptionalSubscript]
 
 if __name__ == "__main__":
     import uvicorn

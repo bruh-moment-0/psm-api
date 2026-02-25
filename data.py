@@ -6,15 +6,16 @@ import base64
 import json # "in json we believe" - json cult /s
 import os
 
-VERSION = "API V2.2 STABLE (built 12:25 GMT+0 9/11/2025)"
-BASEDIR = os.path.expanduser("~/app") # alwaysdata app folder
-# BASEDIR = os.path.abspath(os.path.dirname(__file__)) # local testing dir
+VERSION = "API V2.3 STABLE (built 12:25 GMT+0 25/02/2026)"
+# BASEDIR = os.path.expanduser("~/app") # alwaysdata app folder
+BASEDIR = os.path.abspath(os.path.dirname(__file__)) # local testing dir
 DOTENV_PATH = os.path.join(BASEDIR, ".env")
 STORAGE = os.path.join(BASEDIR, "storage")
 BASEMESSAGEDIR = os.path.join(STORAGE, "messages")
 MESSAGECOUNTERDIR = os.path.join(BASEMESSAGEDIR, "messagecounter")
 USERCOUNTERDIR = os.path.join(BASEMESSAGEDIR, "messagecounter")
 USERDIR = os.path.join(STORAGE, "users")
+DIHMDIR = os.path.join(STORAGE, "dihm")
 AUTHCHALLENGEDIR = os.path.join(STORAGE, "challenge")
 
 os.makedirs(BASEMESSAGEDIR, exist_ok=True)
